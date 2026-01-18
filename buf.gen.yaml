@@ -1,0 +1,9 @@
+version: v2
+managed:
+  enabled: true
+inputs:
+  - directory: ndgr/proto
+plugins:
+  - local: protoc-gen-es
+    opt: target=ts
+    out: src/proto

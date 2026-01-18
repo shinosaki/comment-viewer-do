@@ -5,12 +5,18 @@
   "scripts": {
     "dev": "wrangler dev",
     "types": "wrangler types",
-    "test": "vitest run"
+    "test": "vitest run",
+    "buf:build": "buf generate"
   },
   "devDependencies": {
+    "@bufbuild/buf": "^1.63.0",
+    "@bufbuild/protoc-gen-es": "^2.10.2",
     "@cloudflare/vitest-pool-workers": "^0.12.4",
     "prettier": "^3.8.0",
     "vitest": "^3.2.x",
     "wrangler": "^4.58.0"
+  },
+  "dependencies": {
+    "@bufbuild/protobuf": "^2.10.2"
   }
 }

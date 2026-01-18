@@ -1,4 +1,5 @@
 onlyBuiltDependencies:
+  - '@bufbuild/buf'
   - esbuild
   - sharp
   - workerd
