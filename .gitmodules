@@ -1,0 +1,3 @@
+[submodule "ndgr"]
+	path = ndgr
+	url = https://github.com/n-air-app/nicolive-comment-protobuf.git
