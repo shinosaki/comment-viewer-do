@@ -1,0 +1,25 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "comment-viewer-do",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-01-10",
+  "observability": {
+    "enabled": true
+  },
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "CHAT_SERVICE",
+        "class_name": "ChatService",
+      }
+    ]
+  },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": [
+        "ChatService"
+      ]
+    }
+  ]
+}
