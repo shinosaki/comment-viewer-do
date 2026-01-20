@@ -12,7 +12,16 @@
     "moduleResolution": "bundler",
     "types": [
       "./worker-configuration.d.ts",
-    ]
+    ],
+    "baseUrl": ".",
+    "paths": {
+      "@": [
+        "./src"
+      ],
+      "@/*": [
+        "./src/*"
+      ],
+    }
   },
   "include": [
     "src/**/*.ts",

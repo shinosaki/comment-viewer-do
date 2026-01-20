@@ -9,17 +9,24 @@
   "durable_objects": {
     "bindings": [
       {
-        "name": "CHAT_SERVICE",
-        "class_name": "ChatService",
-      }
+        "name": "LIVE_SERVICE",
+        "class_name": "LiveService",
+      },
+      {
+        "name": "MESSAGE_SERVICE",
+        "class_name": "MessageService",
+      },
+      {
+        "name": "SEGMENT_SERVICE",
+        "class_name": "SegmentService",
+      },
     ]
   },
-  "migrations": [
-    {
-      "tag": "v1",
-      "new_sqlite_classes": [
-        "ChatService"
-      ]
-    }
-  ]
+  // "migrations": [
+  //   {
+  //     "tag": "v1",
+  //     "new_sqlite_classes": [
+  //     ],
+  //   }
+  // ],
 }
