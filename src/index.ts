@@ -1,7 +1,5 @@
 import { WorkerEntrypoint } from 'cloudflare:workers'
-import { LiveDO } from './services/live_do'
-import { MessageDO } from './services/message_do'
-import { SegmentDO } from './services/segment_do'
+import { LiveDO, MessageDO, SegmentDO } from './services'
 
 export class LiveService extends LiveDO<Env> {
   messageService = this.env.MESSAGE_SERVICE
