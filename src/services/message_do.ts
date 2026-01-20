@@ -59,9 +59,23 @@ export abstract class MessageDO<Env = any> extends DurableObject<Env> {
           break
         }
 
-        case 'backward':
+        /**
+         * segment: 二つ前のセグメントまでさかのぼれるらしい
+         */
+        case 'backward': {
+          const { segment } = entry.value
+          const uri = segment?.uri
+          if (uri) {
+            const stub = this.segmentService.getByName(uri)
+            await stub.init(uri)
+          }
+          break
+        }
+
         case 'previous': {
-          const {} = entry.value
+          const { uri } = entry.value
+          const stub = this.segmentService.getByName(uri)
+          await stub.previous(uri)
           break
         }
       }
