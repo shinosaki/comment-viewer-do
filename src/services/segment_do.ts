@@ -1,4 +1,5 @@
 import { fetchMessage } from '@/ndgr'
+import { ProgramStatus_State } from '@/proto/dwango/nicolive/chat/data/atoms_pb'
 import { NicoliveMessageSchema } from '@/proto/dwango/nicolive/chat/data/message_pb'
 import { NicoliveStateSchema } from '@/proto/dwango/nicolive/chat/data/state_pb'
 import {
@@ -92,6 +93,11 @@ export abstract class SegmentDO<Env = any> extends DurableObject<Env> {
           }
 
           case 'state': {
+            const { programStatus } = payload.value
+            if (programStatus?.state === ProgramStatus_State.Ended) {
+              // this.ctx.abort()
+            }
+
             const data = toJson(NicoliveStateSchema, payload.value)
             await stub.sendMessageBulk(JSON.stringify(data))
             break

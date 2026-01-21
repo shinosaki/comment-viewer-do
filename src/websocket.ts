@@ -4,7 +4,7 @@ export const webSocketRequest = (ws: WebSocket, req: WebSocketRequest) => {
   ws.send(JSON.stringify(req))
 }
 
-export const startWatching = (ws: WebSocket) => {
+export const sendStartWatching = (ws: WebSocket) => {
   webSocketRequest(ws, {
     type: 'startWatching',
     data: {

@@ -1,5 +1,5 @@
 import { fetchEmbeddedData } from '@/nico'
-import { startWatching, webSocketRequest } from '@/websocket'
+import { sendStartWatching, webSocketRequest } from '@/websocket'
 import { WebSocketResponse } from '@/websocket.types'
 import { DurableObject } from 'cloudflare:workers'
 import { MessageDO } from './message_do'
@@ -37,8 +37,9 @@ export abstract class LiveDO<Env = any> extends DurableObject<Env> {
   }
 
   async alarm() {
+    if (!this.ws) return
     // send keepSeat message
-    webSocketRequest(this.ws!, { type: 'keepSeat' })
+    webSocketRequest(this.ws, { type: 'keepSeat' })
     // set next alarm
     await this.#keepSeatAlarm()
   }
@@ -64,7 +65,11 @@ export abstract class LiveDO<Env = any> extends DurableObject<Env> {
     this.ws = new WebSocket(webSocketUrl)
     // on open
     this.ws.addEventListener('open', () => {
-      startWatching(this.ws!) // startWatchingメッセージを送信
+      sendStartWatching(this.ws!) // startWatchingメッセージを送信
+    })
+    this.ws.addEventListener('close', (e) => {
+      const clients = this.ctx.getWebSockets()
+      clients.forEach((ws) => ws.close(e.code, e.reason))
     })
     // on message
     this.ws.addEventListener('message', async (e) => {
@@ -95,6 +100,17 @@ export abstract class LiveDO<Env = any> extends DurableObject<Env> {
           const { viewUri } = res.data
           const stub = this.messageService.getByName(liveId)
           await stub.init(liveId, viewUri)
+          break
+        }
+
+        case 'disconnect': {
+          const { reason } = res.data
+          console.log('[LiveDO] disconnected', { reason })
+
+          // MessageDOに終了を通知
+          const stub = this.messageService.getByName(liveId)
+          await stub.setStatus('ENDED')
+
           break
         }
 

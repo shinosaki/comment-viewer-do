@@ -61,5 +61,5 @@ export type WebSocketResponse =
     }
   | {
       type: 'disconnect'
-      data: { reason: 'PING_TIMEOUT' }
+      data: { reason: 'PING_TIMEOUT' | 'END_PROGRAM' }
     }

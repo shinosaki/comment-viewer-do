@@ -3,7 +3,10 @@ import { ChunkedEntrySchema } from '@/proto/dwango/nicolive/chat/service/edge/pa
 import { DurableObject } from 'cloudflare:workers'
 import { SegmentDO } from './segment_do'
 
+type LiveStatus = 'ON_AIR' | 'ENDED'
+
 export abstract class MessageDO<Env = any> extends DurableObject<Env> {
+  private status: LiveStatus = 'ON_AIR'
   private viewUri?: URL
   private nextAt?: number
   private liveId?: string // lv123
@@ -15,6 +18,10 @@ export abstract class MessageDO<Env = any> extends DurableObject<Env> {
     super(state, env)
   }
 
+  async setStatus(status: LiveStatus) {
+    this.status = status
+  }
+
   async init(liveId: string, viewUri: string) {
     this.liveId = liveId // alarmで必要
 
@@ -22,22 +29,20 @@ export abstract class MessageDO<Env = any> extends DurableObject<Env> {
     this.viewUri.searchParams.set('at', 'now')
 
     await this.#handler(liveId, this.viewUri.toString())
-
-    // 1秒後 or nextAtのどちらか大きいほうを設定するほうがいいかも
+    console.log('[MessageDO] handler finished in init')
     await this.ctx.storage.setAlarm(Date.now() + 1 * 1000)
   }
 
   async alarm(): Promise<void> {
-    console.log('[MessageDO] attempt "alarm"', {
-      at: this.nextAt,
-      uri: this.viewUri?.toString(),
-    })
-
+    if (this.status === 'ENDED') {
+      console.log('[MessageDO] deactivate alarm', { status: this.status })
+      return
+    }
     if (!this.viewUri || !this.nextAt || !this.liveId) return
 
     this.viewUri.searchParams.set('at', this.nextAt.toString())
     await this.#handler(this.liveId, this.viewUri.toString())
-
+    console.log('[MessageDO] handler finished in alarm')
     await this.ctx.storage.setAlarm(Date.now() + 1 * 1000)
   }
 
