@@ -45,12 +45,12 @@ export abstract class LiveDO<Env = any> extends DurableObject<Env> {
 
   // init()は必ず実行される前提
   async init(liveId: string): Promise<void> {
-    console.log('[LiveDO] attempt live init', {
-      websocket: this.ws,
-    })
-
+    console.log('[LiveDO] attempt live init')
     // WebSocket接続が存在すれば終了
-    if (this.ws) return
+    if (this.ws) {
+      console.log('[LiveDO] already exists ws session')
+      return
+    }
 
     // ライブの情報を取得
     const live = await fetchEmbeddedData(liveId)
@@ -93,8 +93,8 @@ export abstract class LiveDO<Env = any> extends DurableObject<Env> {
          */
         case 'messageServer': {
           const { viewUri } = res.data
-          const stub = this.messageService.getByName(viewUri)
-          await stub.init(viewUri)
+          const stub = this.messageService.getByName(liveId)
+          await stub.init(liveId, viewUri)
           break
         }
 

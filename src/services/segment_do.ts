@@ -12,7 +12,10 @@ import { LiveDO } from './live_do'
 
 // 状態を持たずWorkerとして実装してもいいかも
 export abstract class SegmentDO<Env = any> extends DurableObject<Env> {
-  private readonly processedIds: Set<string> = new Set()
+  private readonly processed = {
+    ids: new Set<string>(),
+    uris: new Set<string>(),
+  }
 
   abstract readonly liveService: DurableObjectNamespace<LiveDO>
   abstract readonly segmentService: DurableObjectNamespace<SegmentDO>
@@ -28,10 +31,13 @@ export abstract class SegmentDO<Env = any> extends DurableObject<Env> {
    * - ストリーム
    */
   async segment(uri: string) {
+    if (this.processed.uris.has(uri)) return
+    this.processed.uris.add(uri)
+
     console.log('[SegmentDO] attempt "segment"', uri)
     const stream = await fetchMessage(ChunkedMessageSchema, uri)
     for await (const message of stream) {
-      console.log('[MessageDO] attempt message on "segment"', message?.meta?.id)
+      console.log('[SegmentDO] attempt message on "segment"', message?.meta?.id)
       await this.#messageHandler(message)
     }
   }
@@ -42,17 +48,20 @@ export abstract class SegmentDO<Env = any> extends DurableObject<Env> {
    * - 非ストリーム
    * - next.uriでさらに過去のデータを取得
    */
-  async backward(uri: string) {
+  async backward(liveId: string, uri: string) {
+    if (this.processed.uris.has(uri)) return
+    this.processed.uris.add(uri)
+
     console.log('[SegmentDO] attempt "backward"', uri)
     const { messages, next } = await fetchMessage(PackedSegmentSchema, uri)
-    console.log('[MessageDO] message count of "backward"', {
+    console.log('[SegmentDO] message count of "backward"', {
       count: messages.length,
     })
     await Promise.allSettled(messages.map((m) => this.#messageHandler(m)))
 
     if (next?.uri) {
-      const stub = this.segmentService.getByName(next.uri)
-      await stub.backward(next.uri)
+      const stub = this.segmentService.getByName(liveId)
+      await stub.backward(liveId, next.uri)
     }
   }
 
@@ -62,23 +71,16 @@ export abstract class SegmentDO<Env = any> extends DurableObject<Env> {
   async #messageHandler(...messages: ChunkedMessage[]) {
     await Promise.allSettled(
       messages.map(async ({ payload, meta }) => {
+        // signalは用途がわからないしmessage idがないから無視
         if (payload.case === 'signal') return
 
         const messageId = meta?.id
         const liveId = meta?.origin?.origin.value?.liveId.toString()
-
-        if (!messageId) {
-          console.error('[SegmentDO] message id is empty', payload.case)
-          return
-        }
-        if (!liveId) {
-          console.error('[SegmentDO] live id is empty', payload.case)
-          return
-        }
+        if (!messageId || !liveId) return
 
         // messageIdで重複排除
-        if (this.processedIds.has(messageId)) return
-        this.processedIds.add(messageId)
+        if (this.processed.ids.has(messageId)) return
+        this.processed.ids.add(messageId)
 
         const stub = this.liveService.getByName(`lv${liveId}`)
 

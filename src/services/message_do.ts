@@ -6,6 +6,8 @@ import { SegmentDO } from './segment_do'
 export abstract class MessageDO<Env = any> extends DurableObject<Env> {
   private viewUri?: URL
   private nextAt?: number
+  private liveId?: string // lv123
+  private readonly processed = { uris: new Set<string>() }
 
   abstract segmentService: DurableObjectNamespace<SegmentDO>
 
@@ -13,11 +15,13 @@ export abstract class MessageDO<Env = any> extends DurableObject<Env> {
     super(state, env)
   }
 
-  async init(viewUri: string) {
+  async init(liveId: string, viewUri: string) {
+    this.liveId = liveId // alarmで必要
+
     this.viewUri = new URL(viewUri)
     this.viewUri.searchParams.set('at', 'now')
 
-    await this.#handler(this.viewUri.toString())
+    await this.#handler(liveId, this.viewUri.toString())
 
     // 1秒後 or nextAtのどちらか大きいほうを設定するほうがいいかも
     await this.ctx.storage.setAlarm(Date.now() + 1 * 1000)
@@ -29,15 +33,18 @@ export abstract class MessageDO<Env = any> extends DurableObject<Env> {
       uri: this.viewUri?.toString(),
     })
 
-    if (!this.viewUri || !this.nextAt) return
+    if (!this.viewUri || !this.nextAt || !this.liveId) return
 
     this.viewUri.searchParams.set('at', this.nextAt.toString())
-    await this.#handler(this.viewUri.toString())
+    await this.#handler(this.liveId, this.viewUri.toString())
 
     await this.ctx.storage.setAlarm(Date.now() + 1 * 1000)
   }
 
-  async #handler(uri: string) {
+  async #handler(liveId: string, uri: string) {
+    if (this.processed.uris.has(uri)) return
+    this.processed.uris.add(uri)
+
     console.log('[MessageDO] attempt "handler"', uri)
     const stream = await fetchMessage(ChunkedEntrySchema, uri)
     for await (const { entry } of stream) {
@@ -48,30 +55,28 @@ export abstract class MessageDO<Env = any> extends DurableObject<Env> {
           continue
         }
 
-        /**
-         * TODO
-         * Backwardは同じURLが定期的送られてくるぽい？
-         * 同じBackwardのURLを取得しないようにしたほうがいい
-         *
-         * いずれか（多分後者がいい）
-         * - URLごとのSegmentDOインスタンスで取得済みかどうかを保持する
-         * - LiveIDごとのSegmentDOインスタンスで、BackwardやSegmentなどの取得済みURLを保持し重複排除
-         */
         case 'backward': {
           const uri = entry.value.segment?.uri
           if (uri) {
-            const stub = this.segmentService.getByName(uri)
-            await stub.backward(uri)
+            if (this.processed.uris.has(uri)) continue
+            this.processed.uris.add(uri)
+
+            const stub = this.segmentService.getByName(liveId)
+            await stub.backward(liveId, uri)
           }
-          break
+          continue
         }
 
         case 'previous':
         case 'segment': {
           const { uri } = entry.value
-          const stub = this.segmentService.getByName(uri)
+
+          if (this.processed.uris.has(uri)) continue
+          this.processed.uris.add(uri)
+
+          const stub = this.segmentService.getByName(liveId)
           await stub.segment(uri)
-          break
+          continue
         }
       }
     }
