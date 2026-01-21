@@ -1,4 +1,4 @@
-import { fetchStream, readMessage } from '@/ndgr'
+import { fetchMessage } from '@/ndgr'
 import { NicoliveMessageSchema } from '@/proto/dwango/nicolive/chat/data/message_pb'
 import { NicoliveStateSchema } from '@/proto/dwango/nicolive/chat/data/state_pb'
 import {
@@ -10,70 +10,92 @@ import { toJson } from '@bufbuild/protobuf'
 import { DurableObject } from 'cloudflare:workers'
 import { LiveDO } from './live_do'
 
+// 状態を持たずWorkerとして実装してもいいかも
 export abstract class SegmentDO<Env = any> extends DurableObject<Env> {
   private readonly processedIds: Set<string> = new Set()
 
   abstract readonly liveService: DurableObjectNamespace<LiveDO>
+  abstract readonly segmentService: DurableObjectNamespace<SegmentDO>
 
   constructor(state: DurableObjectState, env: Env) {
     super(state, env)
   }
 
-  async previous(uri: string) {
-    console.log('[SegmentDO] attempt previous:', { uri: uri.toString() })
-    const reader = await fetchStream(uri)
-    for await (const { messages } of readMessage(PackedSegmentSchema, reader)) {
-      // ChunkedMessage[]を処理
-      // Array.lengthが多すぎるなら、in-memoryにキューしてAlarm APIで処理してもいいかも
-      await Promise.allSettled(
-        messages.map((m) => this.chunkedMessageHandler(m)),
-      )
+  /**
+   * Segment: 最新のコメントを順次取得
+   * Previous: Backward-Segment間のコメントを取得？
+   * - ChunkedMessage形式
+   * - ストリーム
+   */
+  async segment(uri: string) {
+    console.log('[SegmentDO] attempt "segment"', uri)
+    const stream = await fetchMessage(ChunkedMessageSchema, uri)
+    for await (const message of stream) {
+      console.log('[MessageDO] attempt message on "segment"', message?.meta?.id)
+      await this.#messageHandler(message)
     }
   }
 
-  async init(uri: string) {
-    console.log('[SegmentDO] attempt handle:', { uri: uri.toString() })
-    const reader = await fetchStream(uri)
-    for await (const message of readMessage(ChunkedMessageSchema, reader)) {
-      await this.chunkedMessageHandler(message)
+  /**
+   * Backward: 過去のすべてのコメントを取得
+   * - PackedSegment形式
+   * - 非ストリーム
+   * - next.uriでさらに過去のデータを取得
+   */
+  async backward(uri: string) {
+    console.log('[SegmentDO] attempt "backward"', uri)
+    const { messages, next } = await fetchMessage(PackedSegmentSchema, uri)
+    console.log('[MessageDO] message count of "backward"', {
+      count: messages.length,
+    })
+    await Promise.allSettled(messages.map((m) => this.#messageHandler(m)))
+
+    if (next?.uri) {
+      const stub = this.segmentService.getByName(next.uri)
+      await stub.backward(next.uri)
     }
   }
 
-  async chunkedMessageHandler({ payload, meta }: ChunkedMessage) {
-    // metaは存在する前提
-    if (!meta) return
-    // liveIdは存在する前提
-    const liveId = meta.origin?.origin.value?.liveId
-    if (!liveId) return
-    // タイムスタンプは存在する前提
-    const timestamp = meta.at?.nanos
-    if (!timestamp) return
+  /**
+   * ChunkedMessageを処理する
+   */
+  async #messageHandler(...messages: ChunkedMessage[]) {
+    await Promise.allSettled(
+      messages.map(async ({ payload, meta }) => {
+        if (payload.case === 'signal') return
 
-    // メッセージの重複排除
-    if (this.processedIds.has(meta.id)) return
-    this.processedIds.add(meta.id)
+        const messageId = meta?.id
+        const liveId = meta?.origin?.origin.value?.liveId.toString()
 
-    const stub = this.liveService.getByName(`lv${liveId}`)
+        if (!messageId) {
+          console.error('[SegmentDO] message id is empty', payload.case)
+          return
+        }
+        if (!liveId) {
+          console.error('[SegmentDO] live id is empty', payload.case)
+          return
+        }
 
-    // 基本的にシリアライズしてLiveDOに送信する
-    switch (payload.case) {
-      // chat, gift など
-      case 'message': {
-        const data = toJson(NicoliveMessageSchema, payload.value)
-        await stub.storeMessage(meta.id, JSON.stringify(data))
-        return
-      }
+        // messageIdで重複排除
+        if (this.processedIds.has(messageId)) return
+        this.processedIds.add(messageId)
 
-      // pool, stats など
-      case 'state': {
-        const data = toJson(NicoliveStateSchema, payload.value)
-        await stub.storeMessage(meta.id, JSON.stringify(data))
-        return
-      }
+        const stub = this.liveService.getByName(`lv${liveId}`)
 
-      // FlushedというEnumなんだけどよくわからない
-      // case 'signal': {
-      // }
-    }
+        switch (payload.case) {
+          case 'message': {
+            const data = toJson(NicoliveMessageSchema, payload.value)
+            await stub.sendMessageBulk(JSON.stringify(data))
+            break
+          }
+
+          case 'state': {
+            const data = toJson(NicoliveStateSchema, payload.value)
+            await stub.sendMessageBulk(JSON.stringify(data))
+            break
+          }
+        }
+      }),
+    )
   }
 }

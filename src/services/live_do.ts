@@ -1,14 +1,11 @@
 import { fetchEmbeddedData } from '@/nico'
-import { EmbeddedData } from '@/nico.types'
 import { startWatching, webSocketRequest } from '@/websocket'
 import { WebSocketResponse } from '@/websocket.types'
 import { DurableObject } from 'cloudflare:workers'
 import { MessageDO } from './message_do'
 
 export abstract class LiveDO<Env = any> extends DurableObject<Env> {
-  private status: 'init' | 'connected' | 'finished' = 'init'
-  private live!: EmbeddedData
-  private ws!: WebSocket
+  private ws?: WebSocket
   private keepIntervalSec: number = 30
 
   abstract messageService: DurableObjectNamespace<MessageDO>
@@ -17,13 +14,20 @@ export abstract class LiveDO<Env = any> extends DurableObject<Env> {
     super(state, env)
   }
 
-  async fetch(req: Request) {
+  async fetch() {
     const [client, server] = Object.values(new WebSocketPair())
     this.ctx.acceptWebSocket(server)
     return new Response(null, {
       status: 101,
       webSocket: client,
     })
+  }
+
+  async sendMessageBulk(...messages: string[]) {
+    const clients = this.ctx.getWebSockets()
+    for (const m of messages) {
+      clients.forEach((c) => c.send(m))
+    }
   }
 
   async #keepSeatAlarm(keepIntervalSec: number = this.keepIntervalSec) {
@@ -34,34 +38,33 @@ export abstract class LiveDO<Env = any> extends DurableObject<Env> {
 
   async alarm() {
     // send keepSeat message
-    webSocketRequest(this.ws, { type: 'keepSeat' })
+    webSocketRequest(this.ws!, { type: 'keepSeat' })
     // set next alarm
     await this.#keepSeatAlarm()
   }
 
   // init()は必ず実行される前提
   async init(liveId: string): Promise<void> {
-    // WebSocketサーバへの多重接続を防ぐ
-    if (this.status === 'connected') return
+    console.log('[LiveDO] attempt live init', {
+      websocket: this.ws,
+    })
+
+    // WebSocket接続が存在すれば終了
+    if (this.ws) return
 
     // ライブの情報を取得
-    this.live = await fetchEmbeddedData(liveId)
+    const live = await fetchEmbeddedData(liveId)
     // ライブの状態を確認
-    if (this.live.program.status === 'ENDED') {
+    if (live.program.status === 'ENDED') {
       throw new Error('live is ended')
     }
 
     // WebSocketサーバに接続
-    const { webSocketUrl } = this.live.site.relive
+    const { webSocketUrl } = live.site.relive
     this.ws = new WebSocket(webSocketUrl)
     // on open
     this.ws.addEventListener('open', () => {
-      this.status = 'connected'
-      startWatching(this.ws) // startWatchingメッセージを送信
-    })
-    // on close
-    this.ws.addEventListener('close', () => {
-      this.status = 'finished'
+      startWatching(this.ws!) // startWatchingメッセージを送信
     })
     // on message
     this.ws.addEventListener('message', async (e) => {
@@ -71,7 +74,7 @@ export abstract class LiveDO<Env = any> extends DurableObject<Env> {
          * 即座にpongを返す
          */
         case 'ping': {
-          webSocketRequest(this.ws, { type: 'pong' })
+          webSocketRequest(this.ws!, { type: 'pong' })
           break
         }
 
@@ -96,16 +99,9 @@ export abstract class LiveDO<Env = any> extends DurableObject<Env> {
         }
 
         default: {
-          console.error('unsupported type', res.type)
           break
         }
       }
     })
-  }
-
-  async storeMessage(id: string, json: string) {
-    // WebSocketクライアントにブロードキャスト
-    const clients = this.ctx.getWebSockets()
-    clients.forEach((c) => c.send(json))
   }
 }
