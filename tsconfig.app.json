@@ -1,0 +1,22 @@
+// for react
+{
+  "compilerOptions": {
+    "strict": true,
+    "noEmit": true,
+    "isolatedModules": true,
+    "skipLibCheck": true,
+    "target": "esnext",
+    "lib": [
+      "ESNext",
+      "DOM",
+      "DOM.Iterable",
+    ],
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "jsx": "react-jsx",
+  },
+  "include": [
+    "ui/**/*.ts",
+    "ui/**/*.tsx",
+  ]
+}

@@ -1,29 +1,14 @@
 {
-  "compilerOptions": {
-    "strict": true,
-    "noEmit": true,
-    "isolatedModules": true,
-    "skipLibCheck": true,
-    "target": "esnext",
-    "lib": [
-      "esnext"
-    ],
-    "module": "esnext",
-    "moduleResolution": "bundler",
-    "types": [
-      "./worker-configuration.d.ts",
-    ],
-    "baseUrl": ".",
-    "paths": {
-      "@": [
-        "./src"
-      ],
-      "@/*": [
-        "./src/*"
-      ],
-    }
-  },
-  "include": [
-    "src/**/*.ts",
+  "files": [],
+  "references": [
+    {
+      "path": "./tsconfig.app.json"
+    },
+    {
+      "path": "./tsconfig.node.json"
+    },
+    {
+      "path": "./tsconfig.worker.json"
+    },
   ]
 }
