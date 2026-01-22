@@ -38,7 +38,7 @@ export abstract class SegmentDO<Env = any> extends DurableObject<Env> {
     console.log('[SegmentDO] attempt "segment"', uri)
     const stream = await fetchMessage(ChunkedMessageSchema, uri)
     for await (const message of stream) {
-      console.log('[SegmentDO] attempt message on "segment"', message?.meta?.id)
+      // console.log('[SegmentDO] attempt message on "segment"', message?.meta?.id)
       await this.#messageHandler(message)
     }
   }
