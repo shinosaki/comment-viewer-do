@@ -1,6 +1,7 @@
 import { fetchEmbeddedData } from '@/nico'
 import { sendStartWatching, webSocketRequest } from '@/websocket'
 import { WebSocketResponse } from '@/websocket.types'
+import { JsonValue } from '@bufbuild/protobuf'
 import { DurableObject } from 'cloudflare:workers'
 import { MessageDO } from './message_do'
 
@@ -23,11 +24,13 @@ export abstract class LiveDO<Env = any> extends DurableObject<Env> {
     })
   }
 
-  async sendMessageBulk(...messages: string[]) {
+  async sendMessageBulk(
+    schema: 'message' | 'state' | string,
+    ...messages: JsonValue[]
+  ) {
+    const payload = { schema, messages }
     const clients = this.ctx.getWebSockets()
-    for (const m of messages) {
-      clients.forEach((c) => c.send(m))
-    }
+    clients.forEach((c) => c.send(JSON.stringify(payload)))
   }
 
   async #keepSeatAlarm(keepIntervalSec: number = this.keepIntervalSec) {

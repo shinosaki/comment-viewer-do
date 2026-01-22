@@ -38,8 +38,15 @@ export abstract class SegmentDO<Env = any> extends DurableObject<Env> {
     console.log('[SegmentDO] attempt "segment"', uri)
     const stream = await fetchMessage(ChunkedMessageSchema, uri)
     for await (const message of stream) {
-      // console.log('[SegmentDO] attempt message on "segment"', message?.meta?.id)
-      await this.#messageHandler(message)
+      const liveId = message.meta?.origin?.origin.value?.liveId.toString()
+      if (!liveId) continue
+
+      const stub = this.liveService.getByName(`lv${liveId}`)
+      await Promise.allSettled(
+        Object.entries(await this.#messageHandler(message)).map(
+          ([schema, data]) => stub.sendMessageBulk(schema, ...data),
+        ),
+      )
     }
   }
 
@@ -54,11 +61,18 @@ export abstract class SegmentDO<Env = any> extends DurableObject<Env> {
     this.processed.uris.add(uri)
 
     console.log('[SegmentDO] attempt "backward"', uri)
+
     const { messages, next } = await fetchMessage(PackedSegmentSchema, uri)
     console.log('[SegmentDO] message count of "backward"', {
       count: messages.length,
     })
-    await Promise.allSettled(messages.map((m) => this.#messageHandler(m)))
+
+    const stub = this.liveService.getByName(liveId)
+    await Promise.allSettled(
+      Object.entries(await this.#messageHandler(...messages)).map(
+        ([schema, data]) => stub.sendMessageBulk(schema, ...data),
+      ),
+    )
 
     if (next?.uri) {
       const stub = this.segmentService.getByName(liveId)
@@ -70,40 +84,39 @@ export abstract class SegmentDO<Env = any> extends DurableObject<Env> {
    * ChunkedMessageを処理する
    */
   async #messageHandler(...messages: ChunkedMessage[]) {
-    await Promise.allSettled(
-      messages.map(async ({ payload, meta }) => {
-        // signalは用途がわからないしmessage idがないから無視
-        if (payload.case === 'signal') return
+    const promises = messages.map(async ({ payload, meta }) => {
+      const id = meta?.id ?? 'undefined'
 
-        const messageId = meta?.id
-        const liveId = meta?.origin?.origin.value?.liveId.toString()
-        if (!messageId || !liveId) return
+      if (this.processed.ids.has(id)) return
+      this.processed.ids.add(id)
 
-        // messageIdで重複排除
-        if (this.processed.ids.has(messageId)) return
-        this.processed.ids.add(messageId)
-
-        const stub = this.liveService.getByName(`lv${liveId}`)
-
-        switch (payload.case) {
-          case 'message': {
-            const data = toJson(NicoliveMessageSchema, payload.value)
-            await stub.sendMessageBulk(JSON.stringify(data))
-            break
-          }
-
-          case 'state': {
-            const { programStatus } = payload.value
-            if (programStatus?.state === ProgramStatus_State.Ended) {
-              // this.ctx.abort()
-            }
-
-            const data = toJson(NicoliveStateSchema, payload.value)
-            await stub.sendMessageBulk(JSON.stringify(data))
-            break
-          }
+      switch (payload.case) {
+        case 'message': {
+          const data = toJson(NicoliveMessageSchema, payload.value)
+          return { type: payload.case, data }
         }
-      }),
-    )
+
+        case 'state': {
+          const state =
+            payload.value.programStatus?.state ?? ProgramStatus_State.Unknown
+          if (state === ProgramStatus_State.Ended) return
+
+          const data = toJson(NicoliveStateSchema, payload.value)
+          return { type: payload.case, data }
+        }
+
+        default:
+          return
+      }
+    })
+
+    const results = (await Promise.all(promises)).filter((v) => v !== undefined)
+    const groups = Object.groupBy(results, (r) => r.type)
+    return {
+      message:
+        groups.message?.map((v) => v.data).filter((v) => v !== undefined) ?? [],
+      state:
+        groups.state?.map((v) => v.data).filter((v) => v !== undefined) ?? [],
+    }
   }
 }
