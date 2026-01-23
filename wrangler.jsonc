@@ -6,6 +6,7 @@
   "observability": {
     "enabled": true
   },
+  "tsconfig": "tsconfig.worker.json",
   "durable_objects": {
     "bindings": [
       {
