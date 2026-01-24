@@ -23,11 +23,14 @@
       },
     ]
   },
-  // "migrations": [
-  //   {
-  //     "tag": "v1",
-  //     "new_sqlite_classes": [
-  //     ],
-  //   }
-  // ],
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": [
+        "LiveService",
+        "MessageService",
+        "SegmentService",
+      ],
+    }
+  ],
 }
