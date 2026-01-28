@@ -26,7 +26,6 @@
     "**/.git/subtree-cache/**": true,
     "**/.hg/store/**": true,
     "**/node_modules/**": true,
-    "**/.wrangler/**": true,
     "ndgr/**": true,
   },
   "files.exclude": {
@@ -36,6 +35,5 @@
     "**/.DS_Store": true,
     "**/Thumbs.db": true,
     "**/node_modules": true,
-    "**/.wrangler": true,
   }
 }

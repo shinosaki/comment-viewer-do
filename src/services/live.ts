@@ -1,9 +1,11 @@
 import { fetchEmbeddedData } from '@/nico'
+import { ChatSchema } from '@/proto/dwango/nicolive/chat/data/atoms_pb'
 import { NicoliveMessageSchema } from '@/proto/dwango/nicolive/chat/data/message_pb'
 import { NicoliveStateSchema } from '@/proto/dwango/nicolive/chat/data/state_pb'
+import { ChunkedMessage } from '@/proto/dwango/nicolive/chat/service/edge/payload_pb'
 import { sendStartWatching, webSocketRequest } from '@/websocket'
 import { WebSocketResponse } from '@/websocket.types'
-import { JsonValue, toJson } from '@bufbuild/protobuf'
+import { JsonValue, toJson, toJsonString } from '@bufbuild/protobuf'
 import { getLogger } from '@logtape/logtape'
 import { DurableObject } from 'cloudflare:workers'
 import { MessageDO } from './message'
@@ -11,11 +13,50 @@ import { messagesFromBinaries } from './segment'
 
 const logger = getLogger(['live', 'do'])
 
+const isChat = (
+  v: ChunkedMessage,
+): v is ChunkedMessage & {
+  payload: {
+    case: 'message'
+    value: { data: { case: 'chat' | 'overflowedChat' } }
+  }
+} =>
+  v.payload.case === 'message' &&
+  (v.payload.value.data.case === 'chat' ||
+    v.payload.value.data.case === 'overflowedChat')
+
 export abstract class LiveDO<Env = any> extends DurableObject<Env> {
   private ws?: WebSocket
   private keepIntervalSec: number = 30
 
   abstract messageService: DurableObjectNamespace<MessageDO>
+
+  constructor(state: DurableObjectState, env: Env) {
+    super(state, env)
+
+    this.ctx.blockConcurrencyWhile(async () => {
+      this.ctx.storage.sql.exec(`
+        -- dwango.nicolive.chat.data.Chat
+        CREATE TABLE IF NOT EXISTS chats (
+          id TEXT PRIMARY KEY,
+          body JSON NOT NULL,
+          -- virtual columns
+          no INTEGER NOT NULL
+            AS (json_extract(body, '$.no')),
+          vpos INTEGER NOT NULL
+            AS (json_extract(body, '$.vpos')),
+          raw_user_id INTEGER
+            AS (json_extract(body, '$.rawUserId')),
+          hashed_user_id INTEGER
+            AS (json_extract(body, '$.hashedUserId'))
+        );
+        CREATE INDEX IF NOT EXISTS idx_chats_no ON chats(no);
+        CREATE INDEX IF NOT EXISTS idx_chats_vpos ON chats(vpos);
+        CREATE INDEX IF NOT EXISTS idx_chats_raw_user_id ON chats(raw_user_id);
+        CREATE INDEX IF NOT EXISTS idx_chats_hashed_user_id ON chats(hashed_user_id);
+      `)
+    })
+  }
 
   async fetch() {
     logger.debug('attempt websocket connection request')
@@ -45,7 +86,10 @@ export abstract class LiveDO<Env = any> extends DurableObject<Env> {
     l.debug('processing messages to send')
 
     try {
-      const payloads = messagesFromBinaries(messages).reduce(
+      const chunkedMessages = messagesFromBinaries(messages)
+      this.ctx.waitUntil(this.#store(chunkedMessages))
+
+      const payloads = chunkedMessages.reduce(
         (acc, { payload }) => {
           switch (payload.case) {
             case 'message': {
@@ -82,6 +126,22 @@ export abstract class LiveDO<Env = any> extends DurableObject<Env> {
       })
       throw error
     }
+  }
+
+  async #store(messages: ChunkedMessage[]) {
+    messages
+      .filter(isChat)
+      .map((v) => [
+        v.meta!.id,
+        toJsonString(ChatSchema, v.payload.value.data.value),
+      ])
+      .forEach(([id, value]) => {
+        this.ctx.storage.sql.exec(
+          `INSERT INTO chats (id, body) VALUES (?,?);`,
+          id,
+          value,
+        )
+      })
   }
 
   async #keepSeatAlarm(keepIntervalSec: number = this.keepIntervalSec) {
