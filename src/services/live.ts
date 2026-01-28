@@ -144,6 +144,12 @@ export abstract class LiveDO<Env = any> extends DurableObject<Env> {
       })
   }
 
+  async getChats(): Promise<Record<string, any>[]> {
+    const query = `SELECT body FROM chats`
+    const cursor = this.ctx.storage.sql.exec<{ body: string }>(query)
+    return cursor.toArray().map((v) => JSON.parse(v.body))
+  }
+
   async #keepSeatAlarm(keepIntervalSec: number = this.keepIntervalSec) {
     const now = Date.now()
     const durationMs = keepIntervalSec * 1000
