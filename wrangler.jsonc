@@ -7,6 +7,13 @@
     "enabled": true
   },
   "tsconfig": "tsconfig.worker.json",
+  "services": [
+    {
+      "binding": "SEGMENT_SERVICE",
+      "entrypoint": "SegmentService",
+      "service": "comment-viewer-do",
+    }
+  ],
   "durable_objects": {
     "bindings": [
       {
@@ -17,10 +24,6 @@
         "name": "MESSAGE_SERVICE",
         "class_name": "MessageService",
       },
-      {
-        "name": "SEGMENT_SERVICE",
-        "class_name": "SegmentService",
-      },
     ]
   },
   "migrations": [
@@ -29,7 +32,6 @@
       "new_sqlite_classes": [
         "LiveService",
         "MessageService",
-        "SegmentService",
       ],
     }
   ],

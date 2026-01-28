@@ -1,9 +1,12 @@
 import { fetchEmbeddedData } from '@/nico'
+import { NicoliveMessageSchema } from '@/proto/dwango/nicolive/chat/data/message_pb'
+import { NicoliveStateSchema } from '@/proto/dwango/nicolive/chat/data/state_pb'
 import { sendStartWatching, webSocketRequest } from '@/websocket'
 import { WebSocketResponse } from '@/websocket.types'
-import { JsonValue } from '@bufbuild/protobuf'
+import { JsonValue, toJson } from '@bufbuild/protobuf'
 import { DurableObject } from 'cloudflare:workers'
-import { MessageDO } from './message_do'
+import { MessageDO } from './message'
+import { messagesFromBinaries } from './segment'
 
 export abstract class LiveDO<Env = any> extends DurableObject<Env> {
   private ws?: WebSocket
@@ -24,13 +27,29 @@ export abstract class LiveDO<Env = any> extends DurableObject<Env> {
     })
   }
 
-  async sendMessageBulk(
-    schema: 'message' | 'state' | string,
-    ...messages: JsonValue[]
-  ) {
-    const payload = { schema, messages }
-    const clients = this.ctx.getWebSockets()
-    clients.forEach((c) => c.send(JSON.stringify(payload)))
+  async send(...messages: Uint8Array[]) {
+    const payloads = messagesFromBinaries(messages).reduce(
+      (acc, { payload }) => {
+        switch (payload.case) {
+          case 'message': {
+            acc.messages.push(toJson(NicoliveMessageSchema, payload.value))
+            break
+          }
+          case 'state': {
+            acc.states.push(toJson(NicoliveStateSchema, payload.value))
+            break
+          }
+        }
+        return acc
+      },
+      { messages: [], states: [] } as Record<
+        'messages' | 'states',
+        JsonValue[]
+      >,
+    )
+
+    const data = JSON.stringify(payloads)
+    this.ctx.getWebSockets().forEach((ws) => ws.send(data))
   }
 
   async #keepSeatAlarm(keepIntervalSec: number = this.keepIntervalSec) {
@@ -102,7 +121,7 @@ export abstract class LiveDO<Env = any> extends DurableObject<Env> {
         case 'messageServer': {
           const { viewUri } = res.data
           const stub = this.messageService.getByName(liveId)
-          await stub.init(liveId, viewUri)
+          await stub.launch(liveId, viewUri)
           break
         }
 
@@ -112,7 +131,7 @@ export abstract class LiveDO<Env = any> extends DurableObject<Env> {
 
           // MessageDOに終了を通知
           const stub = this.messageService.getByName(liveId)
-          await stub.setStatus('ENDED')
+          await stub.setEnd()
 
           break
         }
