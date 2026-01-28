@@ -1,5 +1,15 @@
+import { configure, getConsoleSink } from '@logtape/logtape'
 import { app } from './rest'
 import { LiveDO, MessageDO, SegmentWorker } from './services'
+
+await configure({
+  sinks: {
+    console: getConsoleSink({
+      formatter: (r) => JSON.stringify(r),
+    }),
+  },
+  loggers: [{ category: [], lowestLevel: 'info', sinks: ['console'] }],
+})
 
 export class LiveService extends LiveDO<Env> {
   messageService = this.env.MESSAGE_SERVICE

@@ -13,7 +13,7 @@ export const websocketHandler = factory.createHandlers(
     const { liveId } = c.req.valid('query')
     const { liveService } = c.get('dependencies')
     const stub = liveService.getByName(liveId)
-    await stub.init(liveId)
+    await stub.launch(liveId)
     return stub.fetch(c.req.raw)
   },
 )
