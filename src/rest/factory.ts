@@ -1,4 +1,4 @@
-import { LiveDO, MessageDO, SegmentDO } from '@/services'
+import { LiveDO } from '@/services'
 import { createFactory } from 'hono/factory'
 
 type Env = {
@@ -6,8 +6,6 @@ type Env = {
   Variables: {
     dependencies: {
       liveService: DurableObjectNamespace<LiveDO>
-      messageService: DurableObjectNamespace<MessageDO>
-      segmentService: DurableObjectNamespace<SegmentDO>
     }
   }
 }
@@ -18,8 +16,6 @@ export const factory = createFactory<Env>({
       // dependency injection
       c.set('dependencies', {
         liveService: c.env.LIVE_SERVICE,
-        messageService: c.env.MESSAGE_SERVICE,
-        segmentService: c.env.SEGMENT_SERVICE,
       })
       return next()
     })
