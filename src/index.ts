@@ -20,10 +20,6 @@ export class MessageService extends MessageDO<Env> {
   liveService = this.env.LIVE_SERVICE
 }
 
-// export class SegmentService extends SegmentDO<Env> {
-//   liveService = this.env.LIVE_SERVICE
-//   segmentService = this.env.SEGMENT_SERVICE
-// }
 export class SegmentService extends SegmentWorker {}
 
 export default app
