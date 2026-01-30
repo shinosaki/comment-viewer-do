@@ -14,6 +14,15 @@
     "module": "esnext",
     "moduleResolution": "bundler",
     "jsx": "react-jsx",
+    "baseUrl": ".",
+    "paths": {
+      "@": [
+        "./ui"
+      ],
+      "@/*": [
+        "./ui/*"
+      ],
+    }
   },
   "include": [
     "ui/**/*.ts",
